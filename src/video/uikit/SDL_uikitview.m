@@ -42,11 +42,26 @@
 extern int SDL_AppleTVRemoteOpenedAsJoystick;
 #endif
 
+#define DEBUG_UIKIT_MOUSE 1
+
+#if !TARGET_OS_TV
+static void SDLCALL
+SDL_iPadMousePassthroughChanged(void *userdata, const char *name, const char *oldValue, const char *hint)
+{
+    @autoreleasepool {
+        SDL_uikitview* aUIKitView = (__bridge SDL_uikitview *) userdata;
+        [aUIKitView setiPadMousePassthrough:(hint && (*hint == '1')) ? YES : NO];
+    }
+}
+#endif
+
 @implementation SDL_uikitview {
     SDL_Window *sdlwindow;
 
     SDL_TouchID directTouchId;
     SDL_TouchID indirectTouchId;
+    
+    SDL_bool iPadMousePassthrough;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -94,12 +109,34 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
 
 #if !TARGET_OS_TV && defined(__IPHONE_13_4)
         if (@available(iOS 13.4, *)) {
-            [self addInteraction:[[UIPointerInteraction alloc] initWithDelegate:self]];
+#if DEBUG_UIKIT_MOUSE
+            SDL_Log ("Adding interaction delegate.");
+#endif
+            UIPointerInteraction* anInteraction = [[UIPointerInteraction alloc] initWithDelegate:self];
+            anInteraction.enabled = YES;
+            [self addInteraction:anInteraction];
         }
+#endif
+
+#if !TARGET_OS_TV
+        SDL_AddHintCallback(SDL_HINT_IOS_IPAD_MOUSE_PASSTHROUGH,
+                            SDL_iPadMousePassthroughChanged,
+                            (__bridge void *) self);
+        const char* hint = SDL_GetHint(SDL_HINT_IOS_IPAD_MOUSE_PASSTHROUGH);
+        iPadMousePassthrough = (hint && (*hint == '1')) ? YES : NO;
 #endif
     }
 
     return self;
+}
+
+- (void) dealloc
+{
+#if !TARGET_OS_TV
+    SDL_DelHintCallback(SDL_HINT_IOS_IPAD_MOUSE_PASSTHROUGH,
+                        SDL_iPadMousePassthroughChanged,
+                        (__bridge void *) self);
+#endif
 }
 
 - (void)setSDLWindow:(SDL_Window *)window
@@ -166,8 +203,21 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
 
         point.x -= origin.x;
         point.y -= origin.y;
-
-        SDL_SendMouseMotion(sdlwindow, 0, 0, (int)point.x, (int)point.y);
+        
+#if DEBUG_UIKIT_MOUSE
+        SDL_Log ("pointerInteraction: mouse in absolute mode, current point: %f, %f", point.x, point.y);
+#endif
+        if (iPadMousePassthrough) {
+            SDL_SendMouseMotion(sdlwindow, 0, 0, (int)point.x, (int)point.y);
+#if DEBUG_UIKIT_MOUSE
+            SDL_Log ("pointerInteraction: called SDL_SendMouseMotion.");
+#endif
+        } else {
+            SDL_SendTouchMotion(0, 0, sdlwindow, (int)point.x, (int)point.y, 1.0);
+#if DEBUG_UIKIT_MOUSE
+            SDL_Log ("pointerInteraction: called SDL_SendTouchMotion.");
+#endif
+        }
     }
     return [UIPointerRegion regionWithRect:self.bounds identifier:nil];
 }
@@ -237,6 +287,9 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
 #if !TARGET_OS_TV && defined(__IPHONE_13_4)
         if (@available(iOS 13.4, *)) {
             if (touch.type == UITouchTypeIndirectPointer) {
+#if DEBUG_UIKIT_MOUSE
+                SDL_Log ("touchesBegan: with UITouchTypeIndirectPointer.");
+#endif
                 if (!SDL_HasGCMouse()) {
                     int i;
 
@@ -259,8 +312,17 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
                                 break;
                             }
                             SDL_SendMouseButton(sdlwindow, 0, SDL_PRESSED, button);
+#if DEBUG_UIKIT_MOUSE
+                            SDL_Log ("touchesBegan: Called SDL_SendMouseButton from here.");
+#endif
+                            
                         }
                     }
+                } else {
+#if DEBUG_UIKIT_MOUSE
+                    CGPoint locationInView = [self touchLocation:touch shouldNormalize:YES];
+                    SDL_Log ("touchesBegan: We have SDL_HasGCMouse(), doing nothing. X: %f, Y: %f", locationInView.x, locationInView.y);
+#endif
                 }
                 handled = YES;
             }
@@ -271,15 +333,20 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
             SDL_TouchID touchId = [self touchIdForType:touchType];
             float pressure = [self pressureForTouch:touch];
 
-            if (SDL_AddTouch(touchId, touchType, "") < 0) {
-                continue;
+            if (iPadMousePassthrough) {
+                SDL_SendMouseButton(sdlwindow, 0, SDL_TRUE, SDL_BUTTON_LEFT);
+            } else {
+                if (SDL_AddTouch(touchId, touchType, "") < 0) {
+                    continue;
+                }
+                
+                /* FIXME, need to send: int clicks = (int) touch.tapCount; ? */
+                
+                CGPoint locationInView = [self touchLocation:touch shouldNormalize:YES];
+                
+                SDL_SendTouch(touchId, (SDL_FingerID)((size_t)touch), sdlwindow,
+                              SDL_TRUE, locationInView.x, locationInView.y, pressure);
             }
-
-            /* FIXME, need to send: int clicks = (int) touch.tapCount; ? */
-
-            CGPoint locationInView = [self touchLocation:touch shouldNormalize:YES];
-            SDL_SendTouch(touchId, (SDL_FingerID)((size_t)touch), sdlwindow,
-                          SDL_TRUE, locationInView.x, locationInView.y, pressure);
         }
     }
 }
@@ -292,6 +359,9 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
 #if !TARGET_OS_TV && defined(__IPHONE_13_4)
         if (@available(iOS 13.4, *)) {
             if (touch.type == UITouchTypeIndirectPointer) {
+#if DEBUG_UIKIT_MOUSE
+                SDL_Log ("touchesEnded: with UITouchTypeIndirectPointer.");
+#endif
                 if (!SDL_HasGCMouse()) {
                     int i;
 
@@ -314,9 +384,17 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
                                 break;
                             }
                             SDL_SendMouseButton(sdlwindow, 0, SDL_RELEASED, button);
+#if DEBUG_UIKIT_MOUSE
+                            SDL_Log ("touchesEnded: Called SDL_SendMouseButton from here.");
+#endif
                         }
                     }
-                }
+               } else {
+#if DEBUG_UIKIT_MOUSE
+                   CGPoint locationInView = [self touchLocation:touch shouldNormalize:YES];
+                   SDL_Log ("touchesEnded: We have SDL_HasGCMouse(), doing nothing. X: %f, Y: %f", locationInView.x, locationInView.y);
+#endif
+               }
                 handled = YES;
             }
         }
@@ -326,15 +404,20 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
             SDL_TouchID touchId = [self touchIdForType:touchType];
             float pressure = [self pressureForTouch:touch];
 
-            if (SDL_AddTouch(touchId, touchType, "") < 0) {
-                continue;
+            if (iPadMousePassthrough) {
+                SDL_SendMouseButton(sdlwindow, 0, SDL_FALSE, SDL_BUTTON_LEFT);
+            } else {
+                if (SDL_AddTouch(touchId, touchType, "") < 0) {
+                    continue;
+                }
+                
+                /* FIXME, need to send: int clicks = (int) touch.tapCount; ? */
+                
+                CGPoint locationInView = [self touchLocation:touch shouldNormalize:YES];
+
+                SDL_SendTouch(touchId, (SDL_FingerID)((size_t)touch), sdlwindow,
+                              SDL_FALSE, locationInView.x, locationInView.y, pressure);
             }
-
-            /* FIXME, need to send: int clicks = (int) touch.tapCount; ? */
-
-            CGPoint locationInView = [self touchLocation:touch shouldNormalize:YES];
-            SDL_SendTouch(touchId, (SDL_FingerID)((size_t)touch), sdlwindow,
-                          SDL_FALSE, locationInView.x, locationInView.y, pressure);
         }
     }
 }
@@ -351,9 +434,15 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
 
 #if !TARGET_OS_TV && defined(__IPHONE_13_4)
         if (@available(iOS 13.4, *)) {
-            if (touch.type == UITouchTypeIndirectPointer) {
-                /* Already handled in pointerInteraction callback */
-                handled = YES;
+            if (!iPadMousePassthrough) {
+                if (touch.type == UITouchTypeIndirectPointer) {
+#if DEBUG_UIKIT_MOUSE
+                    CGPoint locationInView = [self touchLocation:touch shouldNormalize:YES];
+                    SDL_Log ("touchesMoved: with UITouchTypeIndirectPointer, handled in pointerInteraction. X: %f, Y: %f", locationInView.x, locationInView.y);
+#endif
+                    /* Already handled in pointerInteraction callback */
+                    handled = YES;
+                }
             }
         }
 #endif
@@ -361,14 +450,18 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
             SDL_TouchDeviceType touchType = [self touchTypeForTouch:touch];
             SDL_TouchID touchId = [self touchIdForType:touchType];
             float pressure = [self pressureForTouch:touch];
-
-            if (SDL_AddTouch(touchId, touchType, "") < 0) {
-                continue;
-            }
-
+            
             CGPoint locationInView = [self touchLocation:touch shouldNormalize:YES];
-            SDL_SendTouchMotion(touchId, (SDL_FingerID)((size_t)touch), sdlwindow,
-                                locationInView.x, locationInView.y, pressure);
+
+            if (iPadMousePassthrough) {
+                SDL_SendMouseMotion(sdlwindow, 0, SDL_TRUE, (int)locationInView.x, (int)locationInView.y);
+            } else {
+                if (SDL_AddTouch(touchId, touchType, "") < 0) {
+                    continue;
+                }
+                SDL_SendTouchMotion(touchId, (SDL_FingerID)((size_t)touch), sdlwindow,
+                                    locationInView.x, locationInView.y, pressure);
+            }
         }
     }
 }
@@ -506,6 +599,16 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
     }
 }
 #endif /* TARGET_OS_TV */
+
+- (void)setiPadMousePassthrough:(BOOL)iniPadMousePassthrough
+{
+    iPadMousePassthrough = iniPadMousePassthrough;
+}
+
+- (BOOL)iPadMousePassthrough
+{
+    return iPadMousePassthrough;
+}
 
 @end
 

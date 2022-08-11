@@ -603,6 +603,16 @@ extern "C" {
 #define SDL_HINT_IOS_HIDE_HOME_INDICATOR "SDL_IOS_HIDE_HOME_INDICATOR"
 
 /**
+ * \brief  A variable controlling special handling of a mouse connected to an iPad (iOS 13.4 or later).
+ *          If the iPad has no mouse, this does nothing.
+ *
+ *  This variable can be set to the following values:
+ *    "0"       - Mouse events are passed as SDL touch events (the default)
+ *    "1"       - Mouse events are passed as SDL mouse events.
+ */
+#define SDL_HINT_IOS_IPAD_MOUSE_PASSTHROUGH "SDL_HINT_IOS_IPAD_MOUSE_PASSTHROUGH"
+
+/**
  *  \brief  A variable that lets you enable joystick (and gamecontroller) events even when your app is in the background.
  *
  *  The variable can be set to the following values:
