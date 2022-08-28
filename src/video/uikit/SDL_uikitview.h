@@ -31,6 +31,8 @@
 @interface SDL_uikitview : UIView
 #endif
 
+@property (readwrite, nonatomic) SDL_bool iPadMousePassthrough;
+
 - (instancetype)initWithFrame:(CGRect)frame;
 
 - (void)setSDLWindow:(SDL_Window *)window;
@@ -45,8 +47,6 @@
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event;
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event;
 
-- (void)setiPadMousePassthrough:(BOOL)iniPadMousePassthrough;
-- (BOOL)iPadMousePassthrough;
 @end
 
 /* vi: set ts=4 sw=4 expandtab: */

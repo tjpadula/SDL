@@ -42,7 +42,7 @@
 extern int SDL_AppleTVRemoteOpenedAsJoystick;
 #endif
 
-#define DEBUG_UIKIT_MOUSE 1
+#define DEBUG_UIKIT_MOUSE 0
 
 #if !TARGET_OS_TV
 static void SDLCALL
@@ -50,7 +50,12 @@ SDL_iPadMousePassthroughChanged(void *userdata, const char *name, const char *ol
 {
     @autoreleasepool {
         SDL_uikitview* aUIKitView = (__bridge SDL_uikitview *) userdata;
-        [aUIKitView setiPadMousePassthrough:(hint && (*hint == '1')) ? YES : NO];
+        aUIKitView.iPadMousePassthrough = (hint && (*hint == '1')) ? SDL_TRUE : SDL_FALSE;
+        
+#if DEBUG_UIKIT_MOUSE
+        SDL_Log ("SDL_iPadMousePassthroughChanged() passthrough: %@", (aUIKitView.iPadMousePassthrough ? @"SDL_TRUE" : @"SDL_FALSE"));
+#endif
+
     }
 }
 #endif
@@ -60,8 +65,6 @@ SDL_iPadMousePassthroughChanged(void *userdata, const char *name, const char *ol
 
     SDL_TouchID directTouchId;
     SDL_TouchID indirectTouchId;
-    
-    SDL_bool iPadMousePassthrough;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -122,8 +125,6 @@ SDL_iPadMousePassthroughChanged(void *userdata, const char *name, const char *ol
         SDL_AddHintCallback(SDL_HINT_IOS_IPAD_MOUSE_PASSTHROUGH,
                             SDL_iPadMousePassthroughChanged,
                             (__bridge void *) self);
-        const char* hint = SDL_GetHint(SDL_HINT_IOS_IPAD_MOUSE_PASSTHROUGH);
-        iPadMousePassthrough = (hint && (*hint == '1')) ? YES : NO;
 #endif
     }
 
@@ -207,7 +208,7 @@ SDL_iPadMousePassthroughChanged(void *userdata, const char *name, const char *ol
 #if DEBUG_UIKIT_MOUSE
         SDL_Log ("pointerInteraction: mouse in absolute mode, current point: %f, %f", point.x, point.y);
 #endif
-        if (iPadMousePassthrough) {
+        if (self.iPadMousePassthrough && SDL_HasGCMouse() && ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad)) {
             SDL_SendMouseMotion(sdlwindow, 0, 0, (int)point.x, (int)point.y);
 #if DEBUG_UIKIT_MOUSE
             SDL_Log ("pointerInteraction: called SDL_SendMouseMotion.");
@@ -333,7 +334,7 @@ SDL_iPadMousePassthroughChanged(void *userdata, const char *name, const char *ol
             SDL_TouchID touchId = [self touchIdForType:touchType];
             float pressure = [self pressureForTouch:touch];
 
-            if (iPadMousePassthrough) {
+            if (self.iPadMousePassthrough && SDL_HasGCMouse() && ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad)) {
                 SDL_SendMouseButton(sdlwindow, 0, SDL_TRUE, SDL_BUTTON_LEFT);
             } else {
                 if (SDL_AddTouch(touchId, touchType, "") < 0) {
@@ -404,7 +405,7 @@ SDL_iPadMousePassthroughChanged(void *userdata, const char *name, const char *ol
             SDL_TouchID touchId = [self touchIdForType:touchType];
             float pressure = [self pressureForTouch:touch];
 
-            if (iPadMousePassthrough) {
+            if (self.iPadMousePassthrough && SDL_HasGCMouse() && ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad)) {
                 SDL_SendMouseButton(sdlwindow, 0, SDL_FALSE, SDL_BUTTON_LEFT);
             } else {
                 if (SDL_AddTouch(touchId, touchType, "") < 0) {
@@ -434,7 +435,7 @@ SDL_iPadMousePassthroughChanged(void *userdata, const char *name, const char *ol
 
 #if !TARGET_OS_TV && defined(__IPHONE_13_4)
         if (@available(iOS 13.4, *)) {
-            if (!iPadMousePassthrough) {
+            if (!self.iPadMousePassthrough && SDL_HasGCMouse() && ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad)) {
                 if (touch.type == UITouchTypeIndirectPointer) {
 #if DEBUG_UIKIT_MOUSE
                     CGPoint locationInView = [self touchLocation:touch shouldNormalize:YES];
@@ -453,7 +454,7 @@ SDL_iPadMousePassthroughChanged(void *userdata, const char *name, const char *ol
             
             CGPoint locationInView = [self touchLocation:touch shouldNormalize:YES];
 
-            if (iPadMousePassthrough) {
+            if (self.iPadMousePassthrough && SDL_HasGCMouse() && ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad)) {
                 SDL_SendMouseMotion(sdlwindow, 0, SDL_TRUE, (int)locationInView.x, (int)locationInView.y);
             } else {
                 if (SDL_AddTouch(touchId, touchType, "") < 0) {
@@ -599,16 +600,6 @@ SDL_iPadMousePassthroughChanged(void *userdata, const char *name, const char *ol
     }
 }
 #endif /* TARGET_OS_TV */
-
-- (void)setiPadMousePassthrough:(BOOL)iniPadMousePassthrough
-{
-    iPadMousePassthrough = iniPadMousePassthrough;
-}
-
-- (BOOL)iPadMousePassthrough
-{
-    return iPadMousePassthrough;
-}
 
 @end
 
