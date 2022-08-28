@@ -168,8 +168,9 @@ SDL_bool SDL_IsTextInputActive()
 Notes -- Mouse
 ==============================================================================
 
-iOS now supports Bluetooth mice on iPad, but by default will provide the mouse input as touch. In order for SDL to see the real mouse events, you should set the key UIApplicationSupportsIndirectInputEvents to true in your Info.plist
+iOS now supports Bluetooth mice on iPad as of iOS 13.4, but by default will provide the mouse input as touch. In order for SDL to see the real mouse events, you should set the key UIApplicationSupportsIndirectInputEvents to true in your Info.plist
 
+Setting the hint SDL_HINT_IOS_IPAD_MOUSE_PASSTHROUGH to "1" will result in mouse input events being dispatched as SDL_SendMouseMotion() and SDL_SendMouseButton(). The default "0" will dispatch them as SDL_SendTouch() and SDL_SendTouchMotion().
 
 Notes -- Reading and Writing files
 ==============================================================================
@@ -189,6 +190,18 @@ When your SDL based iPhone application starts up, it sets the working directory 
 
 More information on this subject is available here:
 http://developer.apple.com/library/ios/#documentation/iPhone/Conceptual/iPhoneOSProgrammingGuide/Introduction/Introduction.html
+
+
+Notes -- xcFramework
+==============================================================================
+
+The SDL.xcodeproj file now includes a target to build SDL2.xcframework. An xcframework is a new uber-framework which can handle any combination of processor type and target OS platform. 
+
+In the past, iOS devices were always an ARM variant processor, and the simulator was always i386 or x86_64, and thus libraries could be combined into a single framework for both simulator and device. With the introduction of the Apple Silicon ARM-based machines, regular frameworks would collide as CPU type was no longer sufficient to differentiate the platform. So Apple created the new xcframework library package.
+
+The xcframework target builds into a Products directory alongside the SDL.xcodeproj file, as SDL2.xcframework. This can be brought in to any iOS project and will function properly for both simulator and device, no matter their CPUs.
+
+This target requires Xcode 11 or later. The target will simply fail to build if attempted on older Xcodes.
 
 
 Notes -- iPhone SDL limitations
