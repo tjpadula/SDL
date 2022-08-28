@@ -170,7 +170,8 @@ Notes -- Mouse
 
 iOS now supports Bluetooth mice on iPad as of iOS 13.4, but by default will provide the mouse input as touch. In order for SDL to see the real mouse events, you should set the key UIApplicationSupportsIndirectInputEvents to true in your Info.plist
 
-Setting the hint SDL_HINT_IOS_IPAD_MOUSE_PASSTHROUGH to "1" will result in mouse input events being dispatched as SDL_SendMouseMotion() and SDL_SendMouseButton(). The default "0" will dispatch them as SDL_SendTouch() and SDL_SendTouchMotion().
+Setting the hint SDL_HINT_IOS_IPAD_MOUSE_PASSTHROUGH to "1" will result in mouse input events being dispatched as SDL_SendMouseMotion() and SDL_SendMouseButton(). The default "0" will dispatch them as SDL_SendTouch() and SDL_SendTouchMotion(), as before. This can be changed while the app is running.
+
 
 Notes -- Reading and Writing files
 ==============================================================================
@@ -202,6 +203,20 @@ In the past, iOS devices were always an ARM variant processor, and the simulator
 The xcframework target builds into a Products directory alongside the SDL.xcodeproj file, as SDL2.xcframework. This can be brought in to any iOS project and will function properly for both simulator and device, no matter their CPUs.
 
 This target requires Xcode 11 or later. The target will simply fail to build if attempted on older Xcodes.
+
+In addition, on Apple platforms, main() cannot be in a dynamically loaded library. This means that iOS apps which used the statically-linked libSDL2.lib and now link with the xcframwork will need to define their own main() to call SDL_UIKitRunApp(), like this:
+
+#ifndef SDL_MAIN_HANDLED
+#ifdef main
+#undef main
+#endif
+
+int
+main(int argc, char *argv[])
+{
+	return SDL_UIKitRunApp(argc, argv, SDL_main);
+}
+#endif /* !SDL_MAIN_HANDLED */
 
 
 Notes -- iPhone SDL limitations
